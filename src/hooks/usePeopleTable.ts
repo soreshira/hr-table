@@ -1,61 +1,112 @@
-// usePeopleTable.ts
-// カスタムフック: TanStack Table のセットアップをカプセル化する
-// Container コンポーネントがこのフックを呼び出し、得た table インスタンスを Presentation に渡す
-
+import { useState, useEffect } from "react";
 import {
-  useReactTable,      // TanStack Table のメインフック
-  getCoreRowModel,    // 基本的な行モデル（ソート・フィルタなし）を生成するファクトリ
-  type ColumnDef,     // 列定義の型
-  type Table,         // テーブルインスタンスの型
-} from '@tanstack/react-table'
+  useReactTable,
+  getCoreRowModel,
+  type ColumnDef,
+  type Table,
+  type PaginationState,
+  type ColumnFiltersState,
+} from "@tanstack/react-table";
+import { fetchUsers } from "../api/users";
+import type { User } from "../types/person";
 
-import { mockPeople } from '../data/mockPeople'
-import type { Person } from '../types/person'
+const PAGE_SIZE = 5;
+const DEBOUNCE_MS = 300;
 
-// 各カラムの定義: accessorKey でデータのキーを指定し、header で表示名を設定
-const columns: ColumnDef<Person>[] = [
-  {
-    accessorKey: 'id',         // Person.id を参照
-    header: '社員ID',
-  },
-  {
-    accessorKey: 'name',       // Person.name を参照
-    header: '氏名',
-  },
-  {
-    accessorKey: 'nameKana',   // Person.nameKana を参照
-    header: 'ふりがな',
-  },
-  {
-    accessorKey: 'department', // Person.department を参照
-    header: '部署',
-  },
-  {
-    accessorKey: 'position',   // Person.position を参照
-    header: '役職',
-  },
-  {
-    accessorKey: 'joinedAt',   // Person.joinedAt を参照
-    header: '入社日',
-  },
-  {
-    accessorKey: 'status',     // Person.status を参照（StatusBadge で描画）
-    header: 'ステータス',
-  },
-]
+const columns: ColumnDef<User>[] = [
+  { accessorKey: "id", header: "ID" },
+  { accessorKey: "name", header: "名前" },
+  { accessorKey: "username", header: "ユーザー名" },
+  { accessorKey: "email", header: "メール" },
+  { accessorKey: "phone", header: "電話" },
+  { accessorKey: "website", header: "ウェブサイト" },
+];
 
-// フックの戻り値の型: Presentation コンポーネントに渡す table インスタンスのみ
 type UsePeopleTableReturn = {
-  table: Table<Person>
-}
+  table: Table<User>;
+  isLoading: boolean;
+  error: string | null;
+  totalCount: number;
+};
 
-// usePeopleTable: テーブルの列定義・データ・行モデルを useReactTable に渡してインスタンスを返す
 export function usePeopleTable(): UsePeopleTableReturn {
-  const table = useReactTable<Person>({
-    data: mockPeople,          // 表示するデータ（現段階ではモックデータを直接使用）
-    columns,                   // 上で定義したカラム定義
-    getCoreRowModel: getCoreRowModel(), // 基本行モデル（ソート・ページネーションなしの素の並び順）
-  })
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: PAGE_SIZE,
+  });
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
-  return { table }
+  // API に渡すデバウンス済みフィルター値
+  const [debouncedNameFilter, setDebouncedNameFilter] = useState("");
+  const [debouncedUsernameFilter, setDebouncedUsernameFilter] = useState("");
+
+  const [data, setData] = useState<User[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // フィルター入力をデバウンスし、変化時はページを先頭に戻す
+  useEffect(() => {
+    const name =
+      (columnFilters.find((f) => f.id === "name")?.value as string) ?? "";
+    const username =
+      (columnFilters.find((f) => f.id === "username")?.value as string) ?? "";
+
+    const timer = setTimeout(() => {
+      // React 18 の自動バッチングにより 3 つの setState は 1 回の再レンダリングにまとめられる
+      setDebouncedNameFilter(name);
+      setDebouncedUsernameFilter(username);
+      setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+    }, DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [columnFilters]);
+
+  // ページ変更 or デバウンス済みフィルター変更でAPIフェッチ
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const result = await fetchUsers(
+          pagination.pageIndex + 1,
+          debouncedNameFilter,
+          debouncedUsernameFilter,
+        );
+        if (!cancelled) {
+          setData(result.users);
+          setTotalCount(result.totalCount);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "データの取得に失敗しました",
+          );
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [pagination.pageIndex, debouncedNameFilter, debouncedUsernameFilter]);
+
+  const table = useReactTable<User>({
+    data,
+    columns,
+    manualPagination: true,
+    manualFiltering: true, // フィルタリングはサーバー側で実施
+    rowCount: totalCount,
+    state: { pagination, columnFilters },
+    onPaginationChange: setPagination,
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  return { table, isLoading, error, totalCount };
 }
