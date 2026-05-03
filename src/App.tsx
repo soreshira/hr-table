@@ -1,27 +1,32 @@
-// App.tsx
-// アプリケーションのルートコンポーネント
-// ページ全体のレイアウト（背景・余白）を担い、テーブルの表示は PeopleTableContainer に委譲する
-
-import { PeopleTableContainer } from './components/table'
-// index.css は main.tsx で読み込み済みのためここでは不要
+import { Routes, Route } from "react-router-dom";
+import { AppHeader } from "./components/layout/AppHeader";
+import { PeopleTableContainer } from "./components/table";
+import { TimezoneSettingsPage } from "./pages/TimezoneSettingsPage";
+import { DateDemoPage } from "./pages/DateDemoPage";
+import { DateDemo } from "./components/date/DateDemo";
 
 function App() {
   return (
-    // 画面全体: 薄いグレー背景でコンテンツを中央に配置する
     <div className="min-h-screen bg-gray-100">
+      <AppHeader />
 
-      {/* コンテンツ幅の制限と上下左右の余白 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-        {/* テーブルを囲むカード風のコンテナ */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          {/* Container コンポーネントに処理を委譲（ロジック・状態管理はすべてここで管理） */}
-          <PeopleTableContainer />
-        </div>
-
-      </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <div className="bg-white rounded-xl shadow-md p-6">
+                <PeopleTableContainer />
+              </div>
+            }
+          />
+          <Route path="/settings" element={<TimezoneSettingsPage />} />
+          <Route path="/date-demo" element={<DateDemoPage />} />
+          <Route path="/datedemo" element={<DateDemo />} />
+        </Routes>
+      </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

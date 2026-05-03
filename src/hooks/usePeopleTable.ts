@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -7,20 +7,35 @@ import {
   type PaginationState,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
+import { DateTime } from "luxon";
 import { fetchUsers } from "../api/users";
 import type { User } from "../types/person";
+import { formatDateTime } from "../utils/formatDateTime";
 
 const PAGE_SIZE = 5;
 const DEBOUNCE_MS = 300;
 
-const columns: ColumnDef<User>[] = [
-  { accessorKey: "id", header: "ID" },
-  { accessorKey: "name", header: "名前" },
-  { accessorKey: "username", header: "ユーザー名" },
-  { accessorKey: "email", header: "メール" },
-  { accessorKey: "phone", header: "電話" },
-  { accessorKey: "website", header: "ウェブサイト" },
-];
+function createColumns(timezone: string): ColumnDef<User>[] {
+  return [
+    { accessorKey: "id", header: "ID" },
+    { accessorKey: "name", header: "名前" },
+    { accessorKey: "username", header: "ユーザー名" },
+    { accessorKey: "email", header: "メール" },
+    { accessorKey: "phone", header: "電話" },
+    { accessorKey: "website", header: "ウェブサイト" },
+    {
+      id: "lastLogin",
+      header: "最終ログイン",
+      cell: ({ row }) => {
+        const pseudoDate = DateTime.now().minus({
+          days: row.original.id * 3,
+          hours: (row.original.id * 7) % 24,
+        });
+        return formatDateTime(pseudoDate, timezone);
+      },
+    },
+  ];
+}
 
 type UsePeopleTableReturn = {
   table: Table<User>;
@@ -29,14 +44,13 @@ type UsePeopleTableReturn = {
   totalCount: number;
 };
 
-export function usePeopleTable(): UsePeopleTableReturn {
+export function usePeopleTable(timezone: string): UsePeopleTableReturn {
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: PAGE_SIZE,
   });
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
-  // API に渡すデバウンス済みフィルター値
   const [debouncedNameFilter, setDebouncedNameFilter] = useState("");
   const [debouncedUsernameFilter, setDebouncedUsernameFilter] = useState("");
 
@@ -45,7 +59,8 @@ export function usePeopleTable(): UsePeopleTableReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // フィルター入力をデバウンスし、変化時はページを先頭に戻す
+  const columns = useMemo(() => createColumns(timezone), [timezone]);
+
   useEffect(() => {
     const name =
       (columnFilters.find((f) => f.id === "name")?.value as string) ?? "";
@@ -53,7 +68,6 @@ export function usePeopleTable(): UsePeopleTableReturn {
       (columnFilters.find((f) => f.id === "username")?.value as string) ?? "";
 
     const timer = setTimeout(() => {
-      // React 18 の自動バッチングにより 3 つの setState は 1 回の再レンダリングにまとめられる
       setDebouncedNameFilter(name);
       setDebouncedUsernameFilter(username);
       setPagination((prev) => ({ ...prev, pageIndex: 0 }));
@@ -62,7 +76,6 @@ export function usePeopleTable(): UsePeopleTableReturn {
     return () => clearTimeout(timer);
   }, [columnFilters]);
 
-  // ページ変更 or デバウンス済みフィルター変更でAPIフェッチ
   useEffect(() => {
     let cancelled = false;
 
@@ -100,7 +113,7 @@ export function usePeopleTable(): UsePeopleTableReturn {
     data,
     columns,
     manualPagination: true,
-    manualFiltering: true, // フィルタリングはサーバー側で実施
+    manualFiltering: true,
     rowCount: totalCount,
     state: { pagination, columnFilters },
     onPaginationChange: setPagination,

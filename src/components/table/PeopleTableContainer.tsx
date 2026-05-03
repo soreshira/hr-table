@@ -1,8 +1,10 @@
 import { usePeopleTable } from "../../hooks/usePeopleTable";
+import { useTimezone } from "../../context/TimezoneContext";
 import { PeopleTableView } from "./PeopleTableView";
 
 export function PeopleTableContainer() {
-  const { table, isLoading, error, totalCount } = usePeopleTable();
+  const { timezone } = useTimezone();
+  const { table, isLoading, error, totalCount } = usePeopleTable(timezone);
 
   return (
     <div className="space-y-4">
